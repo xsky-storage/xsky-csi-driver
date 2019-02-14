@@ -1,0 +1,132 @@
+kind: DaemonSet
+apiVersion: apps/v1beta2
+metadata:
+  name: csi-xsky-iscsiplugin
+spec:
+  selector:
+    matchLabels:
+      app: csi-xsky-iscsiplugin
+  template:
+    metadata:
+      labels:
+        app: csi-xsky-iscsiplugin
+    spec:
+      serviceAccount: csi-nodeplugin
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet      
+      containers:
+        - name: driver-registrar
+          image: quay.io/k8scsi/csi-node-driver-registrar:v1.0.1
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+          env:
+            - name: ADDRESS
+              value: /var/lib/kubelet/plugins_registry/csi-xsky-iscsiplugin/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins_registry/csi-xsky-iscsiplugin/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/kubelet/plugins_registry/csi-xsky-iscsiplugin
+            - name: registration-dir
+              mountPath: /registration
+        - name: csi-xsky-iscsiplugin
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          image: xsky/xsky-iscsiplugin:v1.0.3
+          args :
+            - "--nodeid=$(NODE_ID)"
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--v=5"
+            - "--drivername=csi-xsky-iscsiplugin"
+            - "--containerized=true"            
+          env:
+            - name: LOG_LEVEL
+              value: "info"
+            - name: HOST_ROOTFS
+              value: "/rootfs"
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CSI_ENDPOINT
+              value: unix://var/lib/kubelet/plugins_registry/csi-xsky-iscsiplugin/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /var/lib/kubelet/plugins_registry/csi-xsky-iscsiplugin
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: "Bidirectional"
+            - mountPath: /dev
+              name: host-dev
+            - mountPath: /rootfs
+              name: host-rootfs            
+            - mountPath: /sys
+              name: host-sys
+            - mountPath: /lib/modules
+              name: lib-modules
+              readOnly: true
+            - name: log-dir
+              mountPath: /var/log/csi/
+            - mountPath: /usr
+              name: host-usr
+              readOnly: true
+            - name: host-iscsi
+              mountPath: /etc/iscsi
+              readOnly: true
+            - name: logrotate
+              mountPath: /var/lib/logrotate
+      volumes:
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/csi-xsky-iscsiplugin
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory
+        - name: socket-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/csi-xsky-iscsiplugin
+            type: DirectoryOrCreate
+        - name: log-dir
+          hostPath:
+            path: /var/log/csi/
+            type: DirectoryOrCreate
+        - name: host-dev
+          hostPath:
+            path: /dev
+        - name: host-rootfs
+          hostPath:
+            path: /            
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: lib-modules
+          hostPath:
+            path: /lib/modules
+        - name: host-usr
+          hostPath:
+            path: /usr
+        - name: host-iscsi
+          hostPath:
+            path: /etc/iscsi/
+            type: DirectoryOrCreate
+        - name: logrotate
+          hostPath:
+            path: /var/lib/logrotate
+
