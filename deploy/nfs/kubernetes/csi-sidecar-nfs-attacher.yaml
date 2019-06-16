@@ -1,0 +1,63 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: csi-sidecar-nfs-attacher
+  labels:
+    app: csi-sidecar-nfs-attacher
+spec:
+  selector:
+    app: csi-sidecar-nfs-attacher
+  ports:
+    - name: dummy
+      port: 12345
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: csi-sidecar-nfs-attacher
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      external-attacher: csi-sidecar-nfs-attacher
+  template:
+    metadata:
+      labels:
+        external-attacher: csi-sidecar-nfs-attacher
+    spec:
+      serviceAccount: csi-attacher
+      containers:
+        - name: csi-sidecar-nfs-attacher
+          image: quay.io/k8scsi/csi-attacher:v1.1.0 
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--timeout=30s"
+          env:
+            - name: MY_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: MY_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: ADDRESS
+              value: /var/lib/kubelet/plugins_registry/csi-xsky-nfs-driver/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/kubelet/plugins_registry/csi-xsky-nfs-driver
+            - name: timezone
+              mountPath: /etc/localtime
+      volumes:
+        - name: socket-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/csi-xsky-nfs-driver
+            type: DirectoryOrCreate
+        - name: timezone
+          hostPath:
+            path: /etc/localtime
